@@ -27,6 +27,8 @@ MCP7941x rtc=MCP7941x();
 #define ENCA 3
 #define ENCB 2
 
+#define LOOP_WAIT_TIME 100  //mS to wait before next update
+
 Encoder myEnc(ENCA,ENCB);
 
 // Map Meters to Arduino Pins Meter1 is on the left of clock
@@ -229,87 +231,94 @@ void setup () {
 
 int encoderValue = 0;
 int oldEncoderValue = 0;
-int oldSec = 0;
+int oldMicros = 0;
+int microsNow = 0;
 int lastSec = 0;
 long adjustStart=0;
+
 #define ADJUST_WAIT 10000
 
 void loop () {
-  static time_t adjustTime;
-  
-  long newPos = myEnc.read();
-  if (newPos != encoderValue) { // encoder was turned
-    encoderValue = newPos;
-    encoderValue = -encoderValue; // flip encoder sign
-  }   
-  
-  rtc.getDateTime(&tm.Second,&tm.Minute,&tm.Hour,&tm.Wday,&tm.Day,&tm.Month,&tm.Year);
-  
-    
-  if(tm.Second != oldSec){ // only do stuff once per second
-    //show_time_tm("New Second");
+	static time_t adjustTime;
 
-    if(encoderValue != oldEncoderValue){
-      if(adjustStart == 0){ // Is this the start of a time adjustment
-        saveTime();         // If so save current RTC time in EEPROM 
-        setTimeGood(false); // Indicate current RTC time is no longer good
-      }
-      
-      adjustStart = millis();
-      //Serial.print(F("Encoder non zero ="));
-      //Serial.println(encoderValue);
-      if(encoderValue > oldEncoderValue){
-        digitalWrite(GREEN,HIGH);
-        digitalWrite(RED,LOW); 
-      }
-      else{
-         digitalWrite(RED,HIGH);
-         digitalWrite(GREEN,LOW);
-      }
-      adjustTime = makeTime(tm); // Convert current tm structure into seconds since epoch
-      lastSec = tm.Second; 
-      //Serial.print(adjustTime);
-      adjustTime = adjustTime + (encoderValue - oldEncoderValue) * 15;
-      oldEncoderValue = encoderValue;
-      //Serial.print(F(" - "));
-      //Serial.println(adjustTime);
-      breakTime(adjustTime,tm);
-      tm.Second = lastSec;
-      show_time_tm("After adjust");
-      rtc.setDateTime(tm.Second,tm.Minute,tm.Hour,1,tm.Day,tm.Month,tm.Year);
-   }
-   else{
-      digitalWrite(GREEN,LOW);
-      digitalWrite(RED,LOW);
-   }
+	long newPos = myEnc.read();
+	if (newPos != encoderValue) { // encoder was turned
+	encoderValue = newPos;
+	encoderValue = -encoderValue; // flip encoder sign
+	}   
 
-   if((adjustStart != 0) && ((millis()-adjustStart) > ADJUST_WAIT)){
-      setTimeGood(true);
-      adjustStart=0;
-   }
+	rtc.getDateTime(&tm.Second,&tm.Minute,&tm.Hour,&tm.Wday,&tm.Day,&tm.Month,&tm.Year);
+
+	//show_time_tm("New Second");
+
+	if(encoderValue != oldEncoderValue){
+		if(adjustStart == 0){ // Is this the start of a time adjustment
+			saveTime();         // If so save current RTC time in EEPROM 
+			setTimeGood(false); // Indicate current RTC time is no longer good
+		}
+
+		adjustStart = millis();
+
+		//Serial.print(F("Encoder non zero ="));
+		//Serial.println(encoderValue);
+
+		if(encoderValue > oldEncoderValue){
+			digitalWrite(GREEN,HIGH);
+			digitalWrite(RED,LOW); 
+		}
+		else{
+			digitalWrite(RED,HIGH);
+			digitalWrite(GREEN,LOW);
+		}
+
+		adjustTime = makeTime(tm); // Convert current tm structure into seconds since epoch
+
+		lastSec = tm.Second; 
+
+		//Serial.print(adjustTime);
+
+		adjustTime = adjustTime + (encoderValue - oldEncoderValue) * 15;
+
+		oldEncoderValue = encoderValue;
+
+		//Serial.print(F(" - "));
+		//Serial.println(adjustTime);
+		breakTime(adjustTime,tm);
+		tm.Second = lastSec;
+		show_time_tm("After adjust");
+		rtc.setDateTime(tm.Second,tm.Minute,tm.Hour,1,tm.Day,tm.Month,tm.Year);
+	}
+	else{
+
+		digitalWrite(GREEN,LOW);
+		digitalWrite(RED,LOW);
+	}
+
+	if((adjustStart != 0) && ((millis()-adjustStart) > ADJUST_WAIT)){
+
+	   setTimeGood(true);
+	   adjustStart=0;
+	}
    
-   show_time_tm("Set Meters");
+	show_time_tm("Set Meters");
  
-// do not show seconds if time adjustment in progress, 
-// seconds bounce around too much
-   if(encoderValue == oldEncoderValue){
-       setMeter(SECONDS,map(tm.Second,0,59,0,255));
-   }
- 
-       
-   setMeter(MINUTES,map(tm.Minute,0,59,0,255)+getOffset(MINUTES,tm.Minute));
+	// do not show seconds if time adjustment in progress, 
+	// seconds bounce around too much
+	if(encoderValue == oldEncoderValue){
+	   setMeter(SECONDS,map(tm.Second,0,59,0,255));
+	}
 
-  
-     int temp_hours;
-     temp_hours =  tm.Hour;
-     if(temp_hours >  11)
-       temp_hours = temp_hours - 12;
-     setMeter(HOURS,map(temp_hours*60+(tm.Minute/2),0,720,0,255)+getOffset(HOURS,temp_hours));
-
+	setMeter(MINUTES,map(tm.Minute,0,59,0,255)+getOffset(MINUTES,tm.Minute));
+	
+	int temp_hours;
+	temp_hours =  tm.Hour;
+	if(temp_hours >  11)
+	temp_hours = temp_hours - 12;
+	setMeter(HOURS,map(temp_hours*60+(tm.Minute/2),0,720,0,255)+getOffset(HOURS,temp_hours));
 
     //Serial.println(F("--- End of Meter update loop"));
-    oldSec=tm.Second;
-  }  
+
+	delay(LOOP_WAIT_TIME);
 }
 
 /* 
